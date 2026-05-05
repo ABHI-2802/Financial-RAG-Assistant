@@ -1,0 +1,129 @@
+"""Benchmark runner — tests multiple pipeline configs against the question set."""
+
+from dataclasses import dataclass
+
+from financial_rag.evaluation.judge import judge_faithfulness
+from financial_rag.evaluation.metrics import EvalResult, EvalSummary
+from financial_rag.evaluation.questions import BENCHMARK_QUESTIONS, EvalQuestion
+from financial_rag.generation.ollama import OllamaGenerator
+from financial_rag.pipeline.pipeline import RAGPipeline
+from financial_rag.retrieval.factory import create_retriever
+
+
+@dataclass
+class BenchmarkConfig:
+    model: str
+    top_k: int
+    score_threshold: float = 0.0
+    judge_model: str = "qwen3:4b"
+
+
+class BenchmarkRunner:
+    """Runs the benchmark question set against multiple pipeline configurations.
+
+    Args:
+        store_path: Path to the FAISS index.
+        configs: List of configurations to test.
+        questions: Question set to evaluate (defaults to full BENCHMARK_QUESTIONS).
+        verbose: Print progress to stdout.
+    """
+
+    def __init__(
+        self,
+        store_path: str = "data/processed/vector_store",
+        configs: list[BenchmarkConfig] | None = None,
+        questions: list[EvalQuestion] | None = None,
+        verbose: bool = True,
+    ) -> None:
+        self._store_path = store_path
+        self._configs = configs or self._default_configs()
+        self._questions = questions or BENCHMARK_QUESTIONS
+        self._verbose = verbose
+
+    def run(self) -> list[EvalSummary]:
+        """Run all configs against all questions. Returns one EvalSummary per config."""
+        summaries: list[EvalSummary] = []
+
+        for config in self._configs:
+            if self._verbose:
+                print(f"\n{'─'*60}")
+                print(f"Config: model={config.model}  top_k={config.top_k}  threshold={config.score_threshold}")
+                print(f"{'─'*60}")
+
+            summary = self._run_config(config)
+            summaries.append(summary)
+
+        return summaries
+
+    def _run_config(self, config: BenchmarkConfig) -> EvalSummary:
+        retriever = create_retriever(
+            self._store_path, score_threshold=config.score_threshold
+        )
+        generator = OllamaGenerator(model=config.model, think=False)
+        pipeline = RAGPipeline(retriever=retriever, generator=generator, top_k=config.top_k)
+
+        summary = EvalSummary(
+            model=config.model,
+            top_k=config.top_k,
+            score_threshold=config.score_threshold,
+        )
+
+        for q in self._questions:
+            if self._verbose:
+                print(f"  [{q.id}] {q.question[:60]}...")
+
+            response = pipeline.ask(q.question, top_k=config.top_k)
+
+            source_hit = False
+            if q.expected_source:
+                source_hit = any(
+                    q.expected_source in c.lower() for c in response.citations
+                )
+
+            faithfulness, reasoning = judge_faithfulness(
+                question=q.question,
+                answer=response.answer,
+                citations=response.citations,
+                judge_model=config.judge_model,
+            )
+
+            result = EvalResult(
+                question_id=q.id,
+                question=q.question,
+                question_type=q.question_type,
+                expected_source=q.expected_source,
+                model=config.model,
+                top_k=config.top_k,
+                score_threshold=config.score_threshold,
+                chunks_used=response.chunks_used,
+                top_score=response.top_score or 0.0,
+                retrieval_ms=response.retrieval_ms,
+                source_hit=source_hit,
+                answer=response.answer,
+                generation_ms=response.generation_ms,
+                is_grounded=response.is_grounded,
+                faithfulness=faithfulness,
+                judge_reasoning=reasoning,
+            )
+            summary.results.append(result)
+
+            if self._verbose:
+                tag = "✓" if faithfulness >= 2 else "✗"
+                print(
+                    f"    {tag} faith={faithfulness}/3  "
+                    f"hit={'✓' if source_hit else '✗'}  "
+                    f"total={response.total_ms:.0f}ms"
+                )
+
+        return summary
+
+    @staticmethod
+    def _default_configs() -> list[BenchmarkConfig]:
+        return [
+            BenchmarkConfig(model="qwen3:4b",  top_k=3),
+            BenchmarkConfig(model="qwen3:4b",  top_k=5),
+            BenchmarkConfig(model="qwen3:8b",  top_k=3),
+            BenchmarkConfig(model="qwen3:8b",  top_k=5),
+            BenchmarkConfig(model="qwen3:14b", top_k=5),
+            BenchmarkConfig(model="mistral:latest", top_k=5),
+        ]
