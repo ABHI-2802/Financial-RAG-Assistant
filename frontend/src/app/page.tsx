@@ -6,7 +6,6 @@ import { MessageBubble } from "@/components/chat/MessageBubble"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { EmptyState } from "@/components/chat/EmptyState"
 import { useChat } from "@/hooks/useChat"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 export default function Home() {
   const {
@@ -43,7 +42,7 @@ export default function Home() {
 
       {/* Main chat area */}
       <main className="flex flex-1 flex-col overflow-hidden">
-        <ScrollArea className="flex-1 px-4 py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
           <div className="mx-auto max-w-2xl space-y-6">
             {messages.length === 0 ? (
               <EmptyState />
@@ -54,7 +53,7 @@ export default function Home() {
             )}
             <div ref={bottomRef} />
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Input */}
         <div className="border-t border-zinc-800 px-4 py-4">

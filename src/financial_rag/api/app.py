@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
 def create_app(
     store_path: str = _DEFAULT_STORE,
     model: str = _DEFAULT_MODEL,
+    cors_origins: list[str] | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -55,9 +56,12 @@ def create_app(
     app.state.model = model
     app.state.pipeline = None
 
+    from financial_rag.config import settings
+
+    origins = cors_origins or [o.strip() for o in settings.cors_origins.split(",")]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )

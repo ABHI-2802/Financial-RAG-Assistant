@@ -1,0 +1,64 @@
+services:
+
+  # ── Ollama (local LLM inference) ──────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./docker/init-ollama.sh:/init-ollama.sh:ro
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+    entrypoint: ["/bin/sh", "/init-ollama.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s  # first run needs time to pull the model
+
+  # ── FastAPI backend ───────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: rag-api
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_BACKEND=ollama
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - VECTOR_STORE=faiss
+      - VECTOR_STORE_PATH=/data/vector_store
+      - CORS_ORIGINS=http://localhost:3000
+      - API_RELOAD=false
+      - LOG_LEVEL=INFO
+    volumes:
+      # Mount the pre-built FAISS index read-only
+      - ./data/processed:/data:ro
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: on-failure
+
+  # ── Next.js frontend ──────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: frontend
+      dockerfile: ../docker/Dockerfile.frontend
+      args:
+        # Baked into the JS bundle at build time — must be the URL the
+        # *browser* (not Docker) can reach, so we use localhost.
+        - NEXT_PUBLIC_API_URL=http://localhost:8000
+    container_name: rag-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  # Persists downloaded models across `docker compose down / up`
+  ollama_data:

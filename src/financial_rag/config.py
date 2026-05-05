@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_reload: bool = True
+    # Comma-separated list of allowed CORS origins, e.g. "http://localhost:3000,https://example.com"
+    cors_origins: str = "http://localhost:3000"
 
     # Logging
     log_level: str = "INFO"
