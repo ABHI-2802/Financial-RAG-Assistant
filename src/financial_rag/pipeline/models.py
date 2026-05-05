@@ -19,6 +19,7 @@ class RAGResponse:
     model: str
     retrieval_ms: float
     generation_ms: float
+    chunk_texts: list[str] = field(default_factory=list)
 
     @property
     def total_ms(self) -> float:

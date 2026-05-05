@@ -41,6 +41,7 @@ export function useChat() {
           question,
           top_k: topK,
           source_filter: bankFilter === "all" ? null : bankFilter,
+          model,
         },
         (token) => {
           if (abortRef.current) return

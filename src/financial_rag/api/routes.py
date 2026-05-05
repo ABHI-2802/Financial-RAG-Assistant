@@ -82,7 +82,7 @@ def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
             lines.append("")
         context_text = "\n".join(lines)
 
-        model_name = getattr(generator, "_model", "qwen3:8b")
+        model_name = body.model or getattr(generator, "_model", "qwen3:8b")
         think = getattr(generator, "_think", False)
 
         t1 = time.perf_counter()

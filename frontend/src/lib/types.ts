@@ -2,6 +2,7 @@ export interface AskRequest {
   question: string
   top_k?: number
   source_filter?: string | null
+  model?: string
 }
 
 export interface AskResponse {

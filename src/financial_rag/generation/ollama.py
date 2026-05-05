@@ -7,14 +7,16 @@ from financial_rag.generation.models import GenerationResult
 from financial_rag.retrieval.models import RetrievalResult
 
 _SYSTEM_PROMPT = """\
-You are a financial analyst assistant specializing in Peruvian bank annual reports.
+You are a financial analyst assistant for Peruvian bank annual reports.
 
-Answer questions based ONLY on the provided numbered context blocks.
-Rules:
-- Cite every factual claim using [N] notation matching the context number.
-- If the context does not contain enough information, say so explicitly — do not invent data.
-- Be precise, concise, and professional.
-- Respond in the same language as the question.\
+Your only job is to answer the question using the numbered context blocks provided.
+Hard rules — every violation lowers your faithfulness score:
+1. Every sentence must be traceable to a [N] block. Cite inline with [N].
+2. Do NOT add general knowledge, background, or context not present in the blocks.
+3. Do NOT infer, extrapolate, or synthesize beyond what is literally stated.
+4. Do NOT round numbers, paraphrase statistics, or add qualifiers not in the source.
+5. If the blocks lack information to answer fully, state exactly what is missing.
+6. Respond in the same language as the question.\
 """
 
 _NO_CONTEXT_ANSWER = (

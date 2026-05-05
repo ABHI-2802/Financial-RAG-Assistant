@@ -42,63 +42,100 @@ def print_summary_table(summaries: list[EvalSummary]) -> None:
 
 
 def save_csv(summaries: list[EvalSummary], path: str | Path) -> None:
-    """Save per-question detail as CSV."""
+    """Save per-question detail as CSV, merging with existing rows."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    rows = []
+    existing_rows: list[dict] = []
+    existing_keys: set[tuple] = set()
+    if path.exists():
+        try:
+            with open(path, newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    key = (row["model"], row["top_k"], row["score_threshold"], row["question_id"])
+                    existing_keys.add(key)
+                    existing_rows.append(row)
+        except (csv.Error, KeyError):
+            pass
+
+    new_rows: list[dict] = []
     for s in summaries:
         for r in s.results:
-            rows.append({
-                "model": r.model,
-                "top_k": r.top_k,
-                "score_threshold": r.score_threshold,
-                "question_id": r.question_id,
-                "question_type": r.question_type,
-                "faithfulness": r.faithfulness,
-                "faithfulness_pct": round(r.faithfulness_pct, 3),
-                "source_hit": int(r.source_hit),
-                "is_grounded": int(r.is_grounded),
-                "top_score": round(r.top_score, 4),
-                "chunks_used": r.chunks_used,
-                "retrieval_ms": round(r.retrieval_ms, 1),
-                "generation_ms": round(r.generation_ms, 1),
-                "total_ms": round(r.total_ms, 1),
-            })
+            key = (r.model, str(r.top_k), str(r.score_threshold), str(r.question_id))
+            if key not in existing_keys:
+                new_rows.append({
+                    "model": r.model,
+                    "top_k": r.top_k,
+                    "score_threshold": r.score_threshold,
+                    "question_id": r.question_id,
+                    "question_type": r.question_type,
+                    "faithfulness": r.faithfulness,
+                    "faithfulness_pct": round(r.faithfulness_pct, 3),
+                    "source_hit": int(r.source_hit),
+                    "is_grounded": int(r.is_grounded),
+                    "top_score": round(r.top_score, 4),
+                    "chunks_used": r.chunks_used,
+                    "retrieval_ms": round(r.retrieval_ms, 1),
+                    "generation_ms": round(r.generation_ms, 1),
+                    "total_ms": round(r.total_ms, 1),
+                })
+
+    all_rows = existing_rows + new_rows
+    if not all_rows:
+        return
 
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer = csv.DictWriter(f, fieldnames=list(all_rows[0].keys()))
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(all_rows)
 
-    print(f"\n  [report] CSV saved → {path}")
+    print(f"\n  [report] CSV saved → {path} ({len(all_rows)} rows total)")
 
 
 def save_json(summaries: list[EvalSummary], path: str | Path) -> None:
-    """Save full results as JSON."""
+    """Save full results as JSON, merging with any existing file.
+
+    Uses (model, top_k, score_threshold) as the unique key so re-running a
+    single model doesn't erase results from previous runs.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    existing: dict[tuple, dict] = {}
+    if path.exists():
+        try:
+            old = json.loads(path.read_text())
+            for s in old.get("summaries", []):
+                key = (s["model"], s["top_k"], s["score_threshold"], s.get("think", False))
+                existing[key] = s
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    new_rows = {
+        (s.model, s.top_k, s.score_threshold, s.think): {
+            "model": s.model,
+            "top_k": s.top_k,
+            "score_threshold": s.score_threshold,
+            "think": s.think,
+            "n_questions": s.n,
+            "avg_faithfulness_pct": round(s.avg_faithfulness * 100, 1),
+            "source_hit_rate_pct": round(s.source_hit_rate * 100, 1),
+            "grounded_rate_pct": round(s.grounded_rate * 100, 1),
+            "avg_retrieval_ms": round(s.avg_retrieval_ms, 1),
+            "avg_generation_ms": round(s.avg_generation_ms, 1),
+            "avg_total_ms": round(s.avg_total_ms, 1),
+        }
+        for s in summaries
+    }
+
+    merged = {**existing, **new_rows}
     data = {
         "timestamp": datetime.now().isoformat(),
-        "summaries": [
-            {
-                "model": s.model,
-                "top_k": s.top_k,
-                "score_threshold": s.score_threshold,
-                "n_questions": s.n,
-                "avg_faithfulness_pct": round(s.avg_faithfulness * 100, 1),
-                "source_hit_rate_pct": round(s.source_hit_rate * 100, 1),
-                "grounded_rate_pct": round(s.grounded_rate * 100, 1),
-                "avg_retrieval_ms": round(s.avg_retrieval_ms, 1),
-                "avg_generation_ms": round(s.avg_generation_ms, 1),
-                "avg_total_ms": round(s.avg_total_ms, 1),
-            }
-            for s in summaries
-        ],
+        "summaries": list(merged.values()),
     }
 
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
-    print(f"  [report] JSON saved → {path}")
+    print(f"  [report] JSON saved → {path} ({len(merged)} configs total)")

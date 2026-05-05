@@ -48,6 +48,7 @@ class EvalSummary:
     model: str
     top_k: int
     score_threshold: float
+    think: bool = False
     results: list[EvalResult] = field(default_factory=list)
 
     @property

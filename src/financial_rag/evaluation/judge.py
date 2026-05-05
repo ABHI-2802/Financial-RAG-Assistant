@@ -5,26 +5,28 @@ import ollama
 
 
 _JUDGE_PROMPT = """\
-Evaluate if the answer is faithful to the provided source citations.
+Evaluate if the answer is faithful to the source context blocks below.
 
 Question: {question}
 
-Citations used:
-{citations}
+Source context blocks:
+{contexts}
 
 Answer given:
 {answer}
 
 Rate the faithfulness on this scale:
-0 = Answer contradicts sources or invents information not in citations
-1 = Answer is partially grounded but contains unsupported claims
-2 = Answer is mostly grounded with minor gaps
-3 = Answer is fully grounded — every claim is supported by the citations,
+0 = Answer contradicts sources or invents information not in the context blocks
+1 = Answer is partially grounded but contains unsupported claims or inferences
+2 = Answer is mostly grounded with minor unsupported additions
+3 = Answer is fully grounded — every claim traces back to the context blocks,
     or correctly states that information is not available
 
 Rules:
-- If citations are empty and the answer says "no information found", rate 3.
-- If citations are empty but the answer makes specific claims, rate 0.
+- Compare each claim in the answer against the context blocks literally.
+- General background or inferences not in the blocks count as unsupported (max score 2).
+- If contexts are empty and the answer says "no information found", rate 3.
+- If contexts are empty but the answer makes specific claims, rate 0.
 - Respond with ONLY a single digit: 0, 1, 2, or 3. Nothing else.\
 """
 
@@ -33,6 +35,7 @@ def judge_faithfulness(
     question: str,
     answer: str,
     citations: list[str],
+    contexts: list[str] | None = None,
     judge_model: str = "qwen3:4b",
 ) -> tuple[int, str]:
     """Score answer faithfulness using a small LLM as judge.
@@ -46,28 +49,43 @@ def judge_faithfulness(
     Returns:
         Tuple of (score 0-3, raw judge response for debugging).
     """
-    citations_text = (
-        "\n".join(f"- {c}" for c in citations) if citations else "(none)"
-    )
+    if contexts:
+        contexts_text = "\n\n".join(
+            f"[{i+1}] {c[:700]}" for i, c in enumerate(contexts)
+        )
+    elif citations:
+        contexts_text = "\n".join(f"- {c}" for c in citations)
+    else:
+        contexts_text = "(none)"
 
     prompt = _JUDGE_PROMPT.format(
         question=question,
-        citations=citations_text,
-        answer=answer[:800],  # truncate very long answers
+        contexts=contexts_text,
+        answer=answer[:800],
     )
 
     try:
         response = ollama.chat(
             model=judge_model,
             think=False,
+            options={"temperature": 0},
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.message.content.strip()
         # Strip thinking tags if present
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
-        # Extract first digit found
-        match = re.search(r"[0-3]", raw)
-        score = int(match.group()) if match else 1
+        # Extract score from the TAIL of the response (last 300 chars).
+        # The judge reasons at length before stating the verdict — searching from
+        # the start hits citation numbers like "[1]" and rubric digits like "2 =".
+        tail = raw[-300:]
+        verdict_matches = list(re.finditer(
+            r"(?:score|answer|verdict|rating)[:\s*]+([0-3])\b", tail, re.IGNORECASE
+        ))
+        if verdict_matches:
+            score = int(verdict_matches[-1].group(1))
+        else:
+            all_digits = list(re.finditer(r"(?<!\d)([0-3])(?!\d)", tail))
+            score = int(all_digits[-1].group(1)) if all_digits else 1
         return score, raw
     except Exception as e:
         return 1, f"judge error: {e}"

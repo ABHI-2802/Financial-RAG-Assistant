@@ -139,3 +139,85 @@ class TestModelsEndpoint:
     def test_current_model_present(self, client):
         r = client.get("/models")
         assert "current" in r.json()
+
+
+# ── POST /ask — model override field ─────────────────────────────────────────
+
+class TestAskModelField:
+    def test_model_field_accepted(self, client):
+        r = client.post("/ask", json={"question": "pregunta válida", "model": "qwen3:14b"})
+        assert r.status_code == 200
+
+    def test_model_field_optional(self, client):
+        r = client.post("/ask", json={"question": "pregunta válida"})
+        assert r.status_code == 200
+
+    def test_model_field_null_accepted(self, client):
+        r = client.post("/ask", json={"question": "pregunta válida", "model": None})
+        assert r.status_code == 200
+
+
+# ── POST /ask/stream ──────────────────────────────────────────────────────────
+
+class _MockRetrieverStream:
+    store_size = 1421
+
+    def retrieve(self, question, top_k=5, source_filter=None):
+        from financial_rag.retrieval.base import RetrievalResult
+        result = RetrievalResult(results=[], query=question)
+        return result
+
+
+class _MockGeneratorStream:
+    _model = "mock-stream"
+    _think = False
+
+
+class _MockPipelineStream:
+    _retriever = _MockRetrieverStream()
+    _generator = _MockGeneratorStream()
+
+    def ask(self, question, top_k=5, source_filter=None):
+        from financial_rag.pipeline.models import RAGResponse
+        return RAGResponse(
+            answer="respuesta stream",
+            query=question,
+            citations=[],
+            retrieval_scores=[],
+            chunks_used=0,
+            model="mock-stream",
+            retrieval_ms=5.0,
+            generation_ms=20.0,
+        )
+
+
+@pytest.fixture()
+def stream_client():
+    app = create_app(store_path="data/processed/vector_store", model="mock")
+    app.state.pipeline = _MockPipelineStream()
+    with TestClient(app, raise_server_exceptions=True) as c:
+        yield c
+
+
+class TestStreamEndpoint:
+    def test_returns_200(self, stream_client):
+        r = stream_client.post("/ask/stream", json={"question": "pregunta válida"})
+        assert r.status_code == 200
+
+    def test_content_type_is_event_stream(self, stream_client):
+        r = stream_client.post("/ask/stream", json={"question": "pregunta válida"})
+        assert "text/event-stream" in r.headers["content-type"]
+
+    def test_response_contains_done_event(self, stream_client):
+        r = stream_client.post("/ask/stream", json={"question": "pregunta válida"})
+        assert b"done" in r.content
+
+    def test_model_field_forwarded(self, stream_client):
+        r = stream_client.post(
+            "/ask/stream", json={"question": "pregunta válida", "model": "qwen3:14b"}
+        )
+        assert r.status_code == 200
+
+    def test_short_question_returns_422(self, stream_client):
+        r = stream_client.post("/ask/stream", json={"question": "ab"})
+        assert r.status_code == 422

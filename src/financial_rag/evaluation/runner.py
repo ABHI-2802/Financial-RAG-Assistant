@@ -16,6 +16,7 @@ class BenchmarkConfig:
     top_k: int
     score_threshold: float = 0.0
     judge_model: str = "qwen3:4b"
+    think: bool = False
 
 
 class BenchmarkRunner:
@@ -47,7 +48,7 @@ class BenchmarkRunner:
         for config in self._configs:
             if self._verbose:
                 print(f"\n{'─'*60}")
-                print(f"Config: model={config.model}  top_k={config.top_k}  threshold={config.score_threshold}")
+                print(f"Config: model={config.model}  top_k={config.top_k}  threshold={config.score_threshold}  think={config.think}")
                 print(f"{'─'*60}")
 
             summary = self._run_config(config)
@@ -59,13 +60,14 @@ class BenchmarkRunner:
         retriever = create_retriever(
             self._store_path, score_threshold=config.score_threshold
         )
-        generator = OllamaGenerator(model=config.model, think=False)
+        generator = OllamaGenerator(model=config.model, think=config.think)
         pipeline = RAGPipeline(retriever=retriever, generator=generator, top_k=config.top_k)
 
         summary = EvalSummary(
             model=config.model,
             top_k=config.top_k,
             score_threshold=config.score_threshold,
+            think=config.think,
         )
 
         for q in self._questions:
@@ -84,6 +86,7 @@ class BenchmarkRunner:
                 question=q.question,
                 answer=response.answer,
                 citations=response.citations,
+                contexts=response.chunk_texts,
                 judge_model=config.judge_model,
             )
 

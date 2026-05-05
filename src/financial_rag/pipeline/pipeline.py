@@ -71,6 +71,7 @@ class RAGPipeline:
             model=generation.model,
             retrieval_ms=retrieval_ms,
             generation_ms=generation_ms,
+            chunk_texts=[r.chunk.content for r in retrieval.results],
         )
 
     def __repr__(self) -> str:

@@ -10,11 +10,16 @@ class AskRequest(BaseModel):
         default=None,
         description="Restrict retrieval to sources containing this string (e.g. 'interbank').",
     )
+    model: str | None = Field(
+        default=None,
+        description="Ollama model tag to use for this request. Defaults to the pipeline's startup model.",
+    )
 
     model_config = {"json_schema_extra": {"example": {
         "question": "¿Cuál fue la utilidad neta de Interbank en 2024?",
         "top_k": 5,
         "source_filter": "interbank",
+        "model": "qwen3:14b",
     }}}
 
 

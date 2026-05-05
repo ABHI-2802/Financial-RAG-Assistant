@@ -26,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--quick", action="store_true", help="Run only 2 configs (faster)")
     p.add_argument("--models", nargs="+", default=None, help="Override model list")
     p.add_argument("--top-k", nargs="+", type=int, default=None, help="Override top-k list")
+    p.add_argument("--think", action="store_true", help="Enable think=True on the generator")
     p.add_argument("--store", default="data/processed/vector_store", help="FAISS index path")
     p.add_argument("--out", default="data/eval", help="Output directory for reports")
     return p.parse_args()
@@ -41,7 +42,7 @@ def main() -> None:
         ]
     elif args.models and args.top_k:
         configs = [
-            BenchmarkConfig(model=m, top_k=k)
+            BenchmarkConfig(model=m, top_k=k, think=args.think)
             for m in args.models
             for k in args.top_k
         ]
