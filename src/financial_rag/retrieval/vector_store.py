@@ -157,6 +157,11 @@ class FAISSVectorStore:
     # ── Properties ────────────────────────────────────────────────────────
 
     @property
+    def chunks(self) -> list[Chunk]:
+        """All chunks in the index (read-only view)."""
+        return self._chunks
+
+    @property
     def size(self) -> int:
         """Number of chunks currently indexed."""
         return len(self._chunks)

@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--top-k", nargs="+", type=int, default=None, help="Override top-k list")
     p.add_argument("--think", action="store_true", help="Enable think=True on the generator")
     p.add_argument("--reranker", action="store_true", help="Enable cross-encoder reranking after FAISS retrieval")
+    p.add_argument("--hybrid", action="store_true", help="Enable hybrid BM25+FAISS retrieval with RRF")
     p.add_argument("--store", default="data/processed/vector_store", help="FAISS index path")
     p.add_argument("--out", default="data/eval", help="Output directory for reports")
     return p.parse_args()
@@ -43,7 +44,7 @@ def main() -> None:
         ]
     elif args.models and args.top_k:
         configs = [
-            BenchmarkConfig(model=m, top_k=k, think=args.think, use_reranker=args.reranker)
+            BenchmarkConfig(model=m, top_k=k, think=args.think, use_reranker=args.reranker, use_hybrid=args.hybrid)
             for m in args.models
             for k in args.top_k
         ]

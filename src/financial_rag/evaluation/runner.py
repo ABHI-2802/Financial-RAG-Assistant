@@ -18,6 +18,7 @@ class BenchmarkConfig:
     judge_model: str = "qwen3:4b"
     think: bool = False
     use_reranker: bool = False
+    use_hybrid: bool = False
 
 
 class BenchmarkRunner:
@@ -49,7 +50,7 @@ class BenchmarkRunner:
         for config in self._configs:
             if self._verbose:
                 print(f"\n{'─'*60}")
-                print(f"Config: model={config.model}  top_k={config.top_k}  threshold={config.score_threshold}  think={config.think}  reranker={config.use_reranker}")
+                print(f"Config: model={config.model}  top_k={config.top_k}  threshold={config.score_threshold}  think={config.think}  reranker={config.use_reranker}  hybrid={config.use_hybrid}")
                 print(f"{'─'*60}")
 
             summary = self._run_config(config)
@@ -59,7 +60,7 @@ class BenchmarkRunner:
 
     def _run_config(self, config: BenchmarkConfig) -> EvalSummary:
         retriever = create_retriever(
-            self._store_path, score_threshold=config.score_threshold
+            self._store_path, score_threshold=config.score_threshold, use_hybrid=config.use_hybrid
         )
         generator = OllamaGenerator(model=config.model, think=config.think)
         reranker = None

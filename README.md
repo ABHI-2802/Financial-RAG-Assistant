@@ -36,13 +36,14 @@ This project was built **phase by phase** as an AI Engineering portfolio piece. 
 
 Evaluated on a 12-question benchmark covering factual retrieval, risk analysis, and out-of-scope detection across two real bank annual reports.
 
-| Model | think | Reranker | Faithfulness | Source Hit Rate | Avg. Generation |
+| Model | think | Retriever | Faithfulness | Source Hit Rate | Avg. Generation |
 |---|---|---|---|---|---|
-| qwen3:4b | off | off | 58% | 100% | ~35s |
-| qwen3:8b | off | off | 58% | 100% | ~5s |
-| **qwen3:14b** | **off** | **off** | **94%** | **100%** | **~8s** ★ |
-| qwen3:14b | on | off | 94% | 100% | ~22s |
-| qwen3:14b | off | on | 78% | 100% | ~9s |
+| qwen3:4b | off | FAISS | 58% | 100% | ~35s |
+| qwen3:8b | off | FAISS | 58% | 100% | ~5s |
+| **qwen3:14b** | **off** | **FAISS** | **94%** | **100%** | **~8s** ★ |
+| qwen3:14b | on | FAISS | 94% | 100% | ~22s |
+| qwen3:14b | off | FAISS + CrossEncoder | 78% | 100% | ~9s |
+| qwen3:14b | off | BM25 + FAISS (RRF) | 86% | 100% | ~9s |
 
 > Faithfulness improved **+30 percentage points** (63.9% → 94%) after two rounds of optimization: chunk size tuning (800/100 tokens) and fixing the judge prompt to read actual chunk content instead of citation filenames.
 
@@ -50,9 +51,11 @@ Evaluated on a 12-question benchmark covering factual retrieval, risk analysis, 
 
 - **Extended thinking (think=True)** did not improve faithfulness (94% in both modes) but added **2.7× latency** (~22s vs ~8s). For grounded RAG the bottleneck is retrieval quality, not reasoning depth.
 
-- **Cross-encoder reranking hurt faithfulness** (78% vs 94%). Root cause: `ms-marco-MiniLM-L-6-v2` was trained on English web search (MS MARCO dataset) — it reranks by web relevance criteria, not financial Spanish-language RAG quality. A multilingual or domain-specific cross-encoder would be required to see gains.
+- **Cross-encoder reranking** hurt faithfulness (78% vs 94%). `ms-marco-MiniLM-L-6-v2` was trained on English web search — domain mismatch with Spanish financial documents. A multilingual cross-encoder would likely recover the gap.
 
-- **`qwen3:14b`, no think, no reranker** is the optimal production config at 94% faithfulness and ~8s latency.
+- **Hybrid BM25+FAISS (RRF)** also underperformed pure FAISS (86% vs 94%). The dense FAISS embeddings already capture keyword overlap effectively for this domain. BM25 introduces noise by surfacing chunks with surface-level term matches that are semantically off-topic.
+
+- **`qwen3:14b`, FAISS only, no extras** is the optimal config at 94% faithfulness and ~8s latency — a reminder that retrieval optimization (chunk size, overlap) often outperforms architectural complexity.
 
 ---
 

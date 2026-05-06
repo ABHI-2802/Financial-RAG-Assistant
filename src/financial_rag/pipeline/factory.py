@@ -15,6 +15,7 @@ def create_pipeline(
     think: bool = False,
     use_reranker: bool = False,
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    use_hybrid: bool = False,
 ) -> RAGPipeline:
     """Load a saved FAISS index and wire it into a full RAG pipeline.
 
@@ -28,11 +29,13 @@ def create_pipeline(
         use_reranker: If True, adds a cross-encoder reranker after FAISS retrieval.
             Retrieves top_k * 3 candidates, reranks to top_k. Adds ~200-400ms.
         reranker_model: HuggingFace model ID for the cross-encoder.
+        use_hybrid: If True, uses BM25 + FAISS with Reciprocal Rank Fusion
+            instead of pure FAISS retrieval.
 
     Returns:
         RAGPipeline ready to answer questions.
     """
-    retriever = create_retriever(store_path, score_threshold=score_threshold)
+    retriever = create_retriever(store_path, score_threshold=score_threshold, use_hybrid=use_hybrid)
     generator = OllamaGenerator(model=model, think=think)
 
     reranker = None
