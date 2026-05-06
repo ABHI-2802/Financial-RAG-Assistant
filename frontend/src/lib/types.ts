@@ -1,8 +1,14 @@
+export interface ConversationMessage {
+  role: "user" | "assistant"
+  content: string
+}
+
 export interface AskRequest {
   question: string
   top_k?: number
   source_filter?: string | null
   model?: string
+  history?: ConversationMessage[]
 }
 
 export interface AskResponse {

@@ -3,6 +3,11 @@
 from pydantic import BaseModel, Field
 
 
+class ConversationMessage(BaseModel):
+    role: str = Field(..., description="'user' or 'assistant'")
+    content: str = Field(..., description="Message content.")
+
+
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=3, description="Natural language question.")
     top_k: int = Field(default=5, ge=1, le=20, description="Number of chunks to retrieve.")
@@ -14,12 +19,20 @@ class AskRequest(BaseModel):
         default=None,
         description="Ollama model tag to use for this request. Defaults to the pipeline's startup model.",
     )
+    history: list[ConversationMessage] = Field(
+        default_factory=list,
+        description="Prior conversation turns to inject for multi-turn support.",
+    )
 
     model_config = {"json_schema_extra": {"example": {
-        "question": "¿Cuál fue la utilidad neta de Interbank en 2024?",
+        "question": "¿Y cómo compara eso con Scotiabank?",
         "top_k": 5,
-        "source_filter": "interbank",
+        "source_filter": None,
         "model": "qwen3:14b",
+        "history": [
+            {"role": "user", "content": "¿Cuál fue la utilidad neta de Interbank en 2024?"},
+            {"role": "assistant", "content": "La utilidad neta de Interbank fue S/ 1,234M [1]."},
+        ],
     }}}
 
 

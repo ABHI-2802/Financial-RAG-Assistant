@@ -22,7 +22,7 @@ class _MockPipeline:
     _retriever = _MockRetriever()
     _generator = _MockGeneratorStub()
 
-    def ask(self, question: str, top_k: int = 5, source_filter=None) -> RAGResponse:
+    def ask(self, question: str, top_k: int = 5, source_filter=None, history=None) -> RAGResponse:
         return RAGResponse(
             answer=f"Respuesta para: {question}",
             query=question,
@@ -177,7 +177,7 @@ class _MockPipelineStream:
     _retriever = _MockRetrieverStream()
     _generator = _MockGeneratorStream()
 
-    def ask(self, question, top_k=5, source_filter=None):
+    def ask(self, question, top_k=5, source_filter=None, history=None):
         from financial_rag.pipeline.models import RAGResponse
         return RAGResponse(
             answer="respuesta stream",

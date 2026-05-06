@@ -3,6 +3,7 @@
 import time
 
 from financial_rag.generation.base import BaseGenerator
+from financial_rag.generation.models import ConversationTurn
 from financial_rag.pipeline.models import RAGResponse
 from financial_rag.retrieval.base import BaseRetriever
 from financial_rag.retrieval.reranker import BaseReranker
@@ -41,6 +42,7 @@ class RAGPipeline:
         question: str,
         top_k: int | None = None,
         source_filter: str | None = None,
+        history: list[ConversationTurn] | None = None,
     ) -> RAGResponse:
         """Answer a question using retrieved context.
 
@@ -72,7 +74,7 @@ class RAGPipeline:
 
         # ── Generation ─────────────────────────────────────────────────────
         t1 = time.perf_counter()
-        generation = self._generator.generate(retrieval)
+        generation = self._generator.generate(retrieval, history=history)
         generation_ms = (time.perf_counter() - t1) * 1000
 
         return RAGResponse(

@@ -13,6 +13,7 @@ from financial_rag.api.schemas import (
     HealthResponse,
     ModelsResponse,
 )
+from financial_rag.generation.models import ConversationTurn
 from financial_rag.generation.ollama import AVAILABLE_MODELS, _SYSTEM_PROMPT
 
 router = APIRouter()
@@ -29,10 +30,12 @@ def _get_pipeline(request: Request):
 def ask(body: AskRequest, request: Request) -> AskResponse:
     """Answer a question using the RAG pipeline."""
     pipeline = _get_pipeline(request)
+    history = [ConversationTurn(role=m.role, content=m.content) for m in body.history]
     response = pipeline.ask(
         question=body.question,
         top_k=body.top_k,
         source_filter=body.source_filter,
+        history=history or None,
     )
     return AskResponse(
         answer=response.answer,
@@ -89,13 +92,15 @@ def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
         full_text = ""
         in_think = False
 
+        messages: list[dict] = [{"role": "system", "content": _SYSTEM_PROMPT}]
+        for turn in body.history:
+            messages.append({"role": turn.role, "content": turn.content})
+        messages.append({"role": "user", "content": f"{context_text}\n\nPregunta: {body.question}"})
+
         stream = ollama.chat(
             model=model_name,
             think=think,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": f"{context_text}\n\nPregunta: {body.question}"},
-            ],
+            messages=messages,
             stream=True,
         )
 

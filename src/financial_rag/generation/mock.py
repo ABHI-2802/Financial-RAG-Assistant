@@ -1,7 +1,7 @@
 """Deterministic mock generator for unit tests — no Ollama required."""
 
 from financial_rag.generation.base import BaseGenerator
-from financial_rag.generation.models import GenerationResult
+from financial_rag.generation.models import ConversationTurn, GenerationResult
 from financial_rag.retrieval.models import RetrievalResult
 
 
@@ -18,7 +18,11 @@ class MockGenerator(BaseGenerator):
     def __init__(self, answer: str = "Respuesta de prueba basada en el contexto.") -> None:
         self._answer = answer
 
-    def generate(self, retrieval_result: RetrievalResult) -> GenerationResult:
+    def generate(
+        self,
+        retrieval_result: RetrievalResult,
+        history: list[ConversationTurn] | None = None,
+    ) -> GenerationResult:
         return GenerationResult(
             answer=self._answer,
             query=retrieval_result.query,

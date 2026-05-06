@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react"
 import { askStream } from "@/lib/api"
-import { AskResponse, BankFilter, Message } from "@/lib/types"
+import { AskResponse, BankFilter, ConversationMessage, Message } from "@/lib/types"
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -36,12 +36,18 @@ export function useChat() {
       setIsLoading(true)
       abortRef.current = false
 
+      // Build history from completed messages only (exclude the new streaming one)
+      const history: ConversationMessage[] = messages
+        .filter((m) => !m.isStreaming && m.content)
+        .map((m) => ({ role: m.role, content: m.content }))
+
       await askStream(
         {
           question,
           top_k: topK,
           source_filter: bankFilter === "all" ? null : bankFilter,
           model,
+          history,
         },
         (token) => {
           if (abortRef.current) return

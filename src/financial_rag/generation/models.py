@@ -4,6 +4,14 @@ from dataclasses import dataclass
 
 
 @dataclass
+class ConversationTurn:
+    """One exchange in the conversation history sent to the LLM."""
+
+    role: str     # "user" or "assistant"
+    content: str
+
+
+@dataclass
 class GenerationResult:
     """The output of a single generation call.
 

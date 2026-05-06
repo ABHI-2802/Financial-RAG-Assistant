@@ -3,7 +3,7 @@
 import ollama
 
 from financial_rag.generation.base import BaseGenerator
-from financial_rag.generation.models import GenerationResult
+from financial_rag.generation.models import ConversationTurn, GenerationResult
 from financial_rag.retrieval.models import RetrievalResult
 
 _SYSTEM_PROMPT = """\
@@ -50,7 +50,11 @@ class OllamaGenerator(BaseGenerator):
         self._model = model
         self._think = think
 
-    def generate(self, retrieval_result: RetrievalResult) -> GenerationResult:
+    def generate(
+        self,
+        retrieval_result: RetrievalResult,
+        history: list[ConversationTurn] | None = None,
+    ) -> GenerationResult:
         if retrieval_result.is_empty:
             return GenerationResult(
                 answer=_NO_CONTEXT_ANSWER,
@@ -61,16 +65,18 @@ class OllamaGenerator(BaseGenerator):
 
         context_text = self._format_context(retrieval_result)
 
+        messages: list[dict] = [{"role": "system", "content": _SYSTEM_PROMPT}]
+        for turn in (history or []):
+            messages.append({"role": turn.role, "content": turn.content})
+        messages.append({
+            "role": "user",
+            "content": f"{context_text}\n\nPregunta: {retrieval_result.query}",
+        })
+
         response = ollama.chat(
             model=self._model,
             think=self._think,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"{context_text}\n\nPregunta: {retrieval_result.query}",
-                },
-            ],
+            messages=messages,
         )
 
         answer = self._clean_answer(response.message.content)
