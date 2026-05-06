@@ -36,16 +36,23 @@ This project was built **phase by phase** as an AI Engineering portfolio piece. 
 
 Evaluated on a 12-question benchmark covering factual retrieval, risk analysis, and out-of-scope detection across two real bank annual reports.
 
-| Model | think | Faithfulness | Source Hit Rate | Avg. Generation |
-|---|---|---|---|---|
-| qwen3:4b | off | 58% | 100% | ~35s |
-| qwen3:8b | off | 58% | 100% | ~5s |
-| **qwen3:14b** | **off** | **94%** | **100%** | **~8s** |
-| qwen3:14b | on | 94% | 100% | ~22s |
+| Model | think | Reranker | Faithfulness | Source Hit Rate | Avg. Generation |
+|---|---|---|---|---|---|
+| qwen3:4b | off | off | 58% | 100% | ~35s |
+| qwen3:8b | off | off | 58% | 100% | ~5s |
+| **qwen3:14b** | **off** | **off** | **94%** | **100%** | **~8s** ★ |
+| qwen3:14b | on | off | 94% | 100% | ~22s |
+| qwen3:14b | off | on | 78% | 100% | ~9s |
 
 > Faithfulness improved **+30 percentage points** (63.9% → 94%) after two rounds of optimization: chunk size tuning (800/100 tokens) and fixing the judge prompt to read actual chunk content instead of citation filenames.
 
-> **Extended thinking (think=True) did not improve faithfulness** — 94% in both modes — but added 2.7× latency overhead (~22s vs ~8s). This confirms that for grounded RAG the bottleneck is retrieval quality, not reasoning depth. `qwen3:14b think=off` is the optimal production config.
+**Experiment findings:**
+
+- **Extended thinking (think=True)** did not improve faithfulness (94% in both modes) but added **2.7× latency** (~22s vs ~8s). For grounded RAG the bottleneck is retrieval quality, not reasoning depth.
+
+- **Cross-encoder reranking hurt faithfulness** (78% vs 94%). Root cause: `ms-marco-MiniLM-L-6-v2` was trained on English web search (MS MARCO dataset) — it reranks by web relevance criteria, not financial Spanish-language RAG quality. A multilingual or domain-specific cross-encoder would be required to see gains.
+
+- **`qwen3:14b`, no think, no reranker** is the optimal production config at 94% faithfulness and ~8s latency.
 
 ---
 

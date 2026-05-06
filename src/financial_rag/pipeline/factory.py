@@ -13,6 +13,8 @@ def create_pipeline(
     top_k: int = 5,
     score_threshold: float = 0.0,
     think: bool = False,
+    use_reranker: bool = False,
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
 ) -> RAGPipeline:
     """Load a saved FAISS index and wire it into a full RAG pipeline.
 
@@ -20,13 +22,22 @@ def create_pipeline(
         store_path: Base path to the FAISS index (without extension).
         model: Ollama model tag for generation.
             Options: qwen3:4b (fast), qwen3:8b (balanced), qwen3:14b (quality).
-        top_k: Default number of chunks to retrieve per query.
+        top_k: Default number of chunks passed to the generator.
         score_threshold: Minimum cosine similarity to include a chunk.
         think: Enable Qwen3 extended thinking mode.
+        use_reranker: If True, adds a cross-encoder reranker after FAISS retrieval.
+            Retrieves top_k * 3 candidates, reranks to top_k. Adds ~200-400ms.
+        reranker_model: HuggingFace model ID for the cross-encoder.
 
     Returns:
         RAGPipeline ready to answer questions.
     """
     retriever = create_retriever(store_path, score_threshold=score_threshold)
     generator = OllamaGenerator(model=model, think=think)
-    return RAGPipeline(retriever=retriever, generator=generator, top_k=top_k)
+
+    reranker = None
+    if use_reranker:
+        from financial_rag.retrieval.reranker import CrossEncoderReranker
+        reranker = CrossEncoderReranker(model=reranker_model)
+
+    return RAGPipeline(retriever=retriever, generator=generator, top_k=top_k, reranker=reranker)

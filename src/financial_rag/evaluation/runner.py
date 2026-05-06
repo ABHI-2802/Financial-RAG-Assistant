@@ -17,6 +17,7 @@ class BenchmarkConfig:
     score_threshold: float = 0.0
     judge_model: str = "qwen3:4b"
     think: bool = False
+    use_reranker: bool = False
 
 
 class BenchmarkRunner:
@@ -48,7 +49,7 @@ class BenchmarkRunner:
         for config in self._configs:
             if self._verbose:
                 print(f"\n{'─'*60}")
-                print(f"Config: model={config.model}  top_k={config.top_k}  threshold={config.score_threshold}  think={config.think}")
+                print(f"Config: model={config.model}  top_k={config.top_k}  threshold={config.score_threshold}  think={config.think}  reranker={config.use_reranker}")
                 print(f"{'─'*60}")
 
             summary = self._run_config(config)
@@ -61,7 +62,11 @@ class BenchmarkRunner:
             self._store_path, score_threshold=config.score_threshold
         )
         generator = OllamaGenerator(model=config.model, think=config.think)
-        pipeline = RAGPipeline(retriever=retriever, generator=generator, top_k=config.top_k)
+        reranker = None
+        if config.use_reranker:
+            from financial_rag.retrieval.reranker import CrossEncoderReranker
+            reranker = CrossEncoderReranker()
+        pipeline = RAGPipeline(retriever=retriever, generator=generator, top_k=config.top_k, reranker=reranker)
 
         summary = EvalSummary(
             model=config.model,
