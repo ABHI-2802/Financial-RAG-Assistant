@@ -30,6 +30,9 @@ class EvalResult:
 
     # LLM-as-judge
     faithfulness: int         # 0-3 scale (3 = fully faithful)
+
+    # Optional fields (defaults must come after all required fields)
+    think: bool = False
     judge_reasoning: str = ""
 
     @property

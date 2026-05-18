@@ -128,3 +128,139 @@ class TestFactory:
         for model in AVAILABLE_MODELS:
             gen = create_generator(model=model)
             assert gen is not None
+
+    def test_create_generator_claude_backend(self):
+        from unittest.mock import MagicMock, patch
+        from financial_rag.generation.claude import ClaudeGenerator
+        with patch("financial_rag.generation.claude._anthropic_lib") as mock_lib:
+            mock_lib.Anthropic.return_value = MagicMock()
+            gen = create_generator(model="claude-sonnet-4-6", backend="claude")
+        assert isinstance(gen, ClaudeGenerator)
+
+    def test_create_generator_unknown_backend_raises(self):
+        with pytest.raises(ValueError, match="Unknown backend"):
+            create_generator(model="qwen3:8b", backend="openai")
+
+    def test_create_generator_unknown_claude_model_raises(self):
+        with pytest.raises(ValueError, match="Unknown model"):
+            create_generator(model="gpt-4o", backend="claude")
+
+
+# ── ClaudeGenerator ───────────────────────────────────────────────────────────
+
+class TestClaudeGenerator:
+    def _make_generator(self, answer: str = "Respuesta de prueba."):
+        from unittest.mock import MagicMock
+        from financial_rag.generation.claude import ClaudeGenerator
+
+        mock_client = MagicMock()
+
+        # generate() path
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=answer)]
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 50
+        mock_client.messages.create.return_value = mock_response
+
+        # stream() path — context manager yields text tokens
+        mock_stream_cm = MagicMock()
+        mock_stream_cm.__enter__ = MagicMock(return_value=mock_stream_cm)
+        mock_stream_cm.__exit__ = MagicMock(return_value=False)
+        mock_stream_cm.text_stream = iter([answer])
+        mock_client.messages.stream.return_value = mock_stream_cm
+
+        return ClaudeGenerator(_client=mock_client)
+
+    def test_returns_generation_result(self):
+        gen = self._make_generator()
+        result = gen.generate(make_retrieval_result())
+        assert isinstance(result, GenerationResult)
+
+    def test_answer_populated(self):
+        gen = self._make_generator(answer="Utilidad neta fue S/ 1,200 millones.")
+        result = gen.generate(make_retrieval_result())
+        assert result.answer == "Utilidad neta fue S/ 1,200 millones."
+
+    def test_query_captured(self):
+        gen = self._make_generator()
+        rr = make_retrieval_result(query="¿Cuál fue el ROE?")
+        result = gen.generate(rr)
+        assert result.query == "¿Cuál fue el ROE?"
+
+    def test_citations_captured(self):
+        gen = self._make_generator()
+        rr = make_retrieval_result()
+        result = gen.generate(rr)
+        assert result.citations == rr.citations
+
+    def test_token_counts(self):
+        gen = self._make_generator()
+        result = gen.generate(make_retrieval_result())
+        assert result.input_tokens == 100
+        assert result.output_tokens == 50
+        assert result.total_tokens == 150
+
+    def test_empty_retrieval_returns_no_context_answer(self):
+        from financial_rag.generation.claude import _NO_CONTEXT_ANSWER
+        gen = self._make_generator()
+        result = gen.generate(empty_retrieval_result())
+        assert result.answer == _NO_CONTEXT_ANSWER
+        assert result.citations == []
+
+    def test_empty_retrieval_skips_api_call(self):
+        from unittest.mock import MagicMock
+        from financial_rag.generation.claude import ClaudeGenerator
+        mock_client = MagicMock()
+        gen = ClaudeGenerator(_client=mock_client)
+        gen.generate(empty_retrieval_result())
+        mock_client.messages.create.assert_not_called()
+
+    def test_stream_yields_tokens(self):
+        gen = self._make_generator(answer="token de respuesta")
+        tokens = list(gen.stream(make_retrieval_result()))
+        assert len(tokens) > 0
+        assert "token de respuesta" in "".join(tokens)
+
+    def test_stream_empty_yields_no_context(self):
+        from financial_rag.generation.claude import _NO_CONTEXT_ANSWER
+        gen = self._make_generator()
+        tokens = list(gen.stream(empty_retrieval_result()))
+        assert tokens == [_NO_CONTEXT_ANSWER]
+
+    def test_stream_empty_skips_api_call(self):
+        from unittest.mock import MagicMock
+        from financial_rag.generation.claude import ClaudeGenerator
+        mock_client = MagicMock()
+        gen = ClaudeGenerator(_client=mock_client)
+        list(gen.stream(empty_retrieval_result()))
+        mock_client.messages.stream.assert_not_called()
+
+    def test_repr_contains_class_and_model(self):
+        gen = self._make_generator()
+        r = repr(gen)
+        assert "ClaudeGenerator" in r
+        assert "claude-sonnet-4-6" in r
+
+    def test_history_injected_into_messages(self):
+        from unittest.mock import MagicMock, call
+        from financial_rag.generation.claude import ClaudeGenerator
+        from financial_rag.generation.models import ConversationTurn
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="ok")]
+        mock_response.usage.input_tokens = 10
+        mock_response.usage.output_tokens = 5
+        mock_client.messages.create.return_value = mock_response
+
+        gen = ClaudeGenerator(_client=mock_client)
+        history = [
+            ConversationTurn(role="user", content="pregunta anterior"),
+            ConversationTurn(role="assistant", content="respuesta anterior"),
+        ]
+        gen.generate(make_retrieval_result(), history=history)
+
+        _, kwargs = mock_client.messages.create.call_args
+        roles = [m["role"] for m in kwargs["messages"]]
+        assert roles[0] == "user"
+        assert roles[1] == "assistant"
+        assert roles[-1] == "user"  # current question last

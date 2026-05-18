@@ -78,7 +78,9 @@ class HybridRetriever(BaseRetriever):
         top_k: int = 5,
         source_filter: str | None = None,
     ) -> RetrievalResult:
-        candidate_k = top_k * 3
+        # Expand candidate pool when filtering — many candidates will be discarded,
+        # so we need a larger initial set to still return top_k after the filter.
+        candidate_k = top_k * 3 if not source_filter else min(top_k * 10, self._store.size)
 
         # ── Dense (FAISS) retrieval ───────────────────────────────────────
         faiss_results: list[SearchResult] = self._store.search(
@@ -92,43 +94,49 @@ class HybridRetriever(BaseRetriever):
         bm25_hits = self._bm25.query(query, top_k=candidate_k)
 
         # ── Reciprocal Rank Fusion ────────────────────────────────────────
-        rrf_scores: dict[int, float] = {}
+        # Key: (source, chunk_index) — unique per store because each document's
+        # splitter never repeats chunk_index within that document.
+        # Using chunk_index alone would collide across documents (both start at 0).
+        type ChunkKey = tuple[str, int]
+        rrf_scores: dict[ChunkKey, float] = {}
 
         for rank, sr in enumerate(faiss_results):
-            chunk_idx = sr.chunk.chunk_index
-            rrf_scores[chunk_idx] = rrf_scores.get(chunk_idx, 0.0) + 1.0 / (self._rrf_k + rank)
+            key: ChunkKey = (sr.chunk.source, sr.chunk.chunk_index)
+            rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (self._rrf_k + rank)
 
-        for rank, (chunk_idx, _) in enumerate(bm25_hits):
-            rrf_scores[chunk_idx] = rrf_scores.get(chunk_idx, 0.0) + 1.0 / (self._rrf_k + rank)
+        for rank, (chunk_pos, _) in enumerate(bm25_hits):
+            bm25_chunk = self._bm25.chunks[chunk_pos]
+            key = (bm25_chunk.source, bm25_chunk.chunk_index)
+            rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (self._rrf_k + rank)
 
-        # Build a lookup from chunk_index → SearchResult for already-fetched chunks
-        faiss_lookup: dict[int, SearchResult] = {
-            sr.chunk.chunk_index: sr for sr in faiss_results
+        # Build lookups using the same compound key
+        faiss_lookup: dict[ChunkKey, SearchResult] = {
+            (sr.chunk.source, sr.chunk.chunk_index): sr for sr in faiss_results
         }
-        bm25_lookup: dict[int, object] = {
-            idx: self._bm25.chunks[idx] for idx, _ in bm25_hits
+        bm25_lookup: dict[ChunkKey, object] = {
+            (self._bm25.chunks[pos].source, self._bm25.chunks[pos].chunk_index): self._bm25.chunks[pos]
+            for pos, _ in bm25_hits
         }
 
-        sorted_idx = sorted(rrf_scores, key=lambda i: rrf_scores[i], reverse=True)
+        # Walk all candidates sorted by RRF score, applying source_filter as we go.
+        # This ensures we collect up to top_k matching results even when the filter
+        # discards many of the top-ranked candidates.
+        sorted_keys = sorted(rrf_scores, key=lambda k: rrf_scores[k], reverse=True)
 
         results: list[SearchResult] = []
-        for new_rank, chunk_idx in enumerate(sorted_idx[:top_k]):
-            if chunk_idx in faiss_lookup:
-                sr = faiss_lookup[chunk_idx]
-                chunk = sr.chunk
-            else:
-                chunk = bm25_lookup[chunk_idx]
-
+        for key in sorted_keys:
+            if len(results) >= top_k:
+                break
+            chunk = (
+                faiss_lookup[key].chunk
+                if key in faiss_lookup
+                else bm25_lookup[key]
+            )
             if source_filter and source_filter.lower() not in chunk.source.lower():
                 continue
+            results.append(SearchResult(chunk=chunk, score=rrf_scores[key], rank=len(results)))
 
-            results.append(SearchResult(chunk=chunk, score=rrf_scores[chunk_idx], rank=new_rank))
-
-        # Re-number ranks after optional source filter
-        for i, r in enumerate(results):
-            r.rank = i
-
-        return RetrievalResult(query=query, results=results[:top_k])
+        return RetrievalResult(query=query, results=results)
 
     @property
     def store_size(self) -> int:

@@ -111,6 +111,58 @@ class TestHybridRetriever:
         result = retriever.retrieve("query", top_k=5, source_filter="scotiabank")
         assert all("scotiabank" in r.chunk.source.lower() for r in result.results)
 
+    def test_source_filter_returns_top_k_when_available(self):
+        """Filter must not silently truncate results when enough matching chunks exist."""
+        chunks = (
+            [_make_chunk(i, f"datos interbank {i}", source="interbank.pdf") for i in range(3)]
+            + [_make_chunk(i + 3, f"datos scotiabank {i}", source="scotiabank.pdf") for i in range(6)]
+        )
+        store = _make_mock_store(chunks)
+        store.size = len(chunks)
+        store.search.return_value = [
+            _make_search_result(c, score=0.9 - i * 0.05, rank=i)
+            for i, c in enumerate(chunks)
+        ]
+        retriever = HybridRetriever(store=store, embedder=MagicMock())
+        result = retriever.retrieve("query", top_k=5, source_filter="scotiabank")
+        assert len(result.results) == 5
+        assert all("scotiabank" in r.chunk.source.lower() for r in result.results)
+
+    def test_no_collision_across_sources_with_same_chunk_index(self):
+        """Chunks from different documents sharing chunk_index must not collide in RRF.
+
+        Before the fix, (source_A, chunk_index=0) and (source_B, chunk_index=0)
+        both mapped to key 0 in the RRF dict — one chunk was silently lost or got
+        the wrong score. The compound (source, chunk_index) key prevents this.
+        """
+        # Two banks, each with 3 chunks. Both sets use chunk_index 0, 1, 2.
+        interbank = [
+            _make_chunk(i, f"interbank datos {i}", source="interbank.pdf")
+            for i in range(3)
+        ]
+        scotiabank = [
+            _make_chunk(i, f"scotiabank datos {i}", source="scotiabank.pdf")
+            for i in range(3)
+        ]
+        all_chunks = interbank + scotiabank
+
+        store = _make_mock_store(all_chunks)
+        store.size = len(all_chunks)
+        store.search.return_value = [
+            _make_search_result(c, score=0.9 - i * 0.05, rank=i)
+            for i, c in enumerate(all_chunks)
+        ]
+
+        retriever = HybridRetriever(store=store, embedder=MagicMock())
+        result = retriever.retrieve("query", top_k=6)
+
+        assert len(result.results) == 6, (
+            "All 6 chunks must survive RRF — collision shrinks this to 3"
+        )
+        sources = {r.chunk.source for r in result.results}
+        assert "interbank.pdf" in sources
+        assert "scotiabank.pdf" in sources
+
     def test_repr(self):
         chunks = [_make_chunk(0, "texto")]
         retriever = self._make_retriever(chunks)

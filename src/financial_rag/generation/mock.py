@@ -1,5 +1,7 @@
 """Deterministic mock generator for unit tests — no Ollama required."""
 
+from collections.abc import Iterator
+
 from financial_rag.generation.base import BaseGenerator
 from financial_rag.generation.models import ConversationTurn, GenerationResult
 from financial_rag.retrieval.models import RetrievalResult
@@ -31,3 +33,11 @@ class MockGenerator(BaseGenerator):
             input_tokens=len(retrieval_result.query.split()),
             output_tokens=len(self._answer.split()),
         )
+
+    def stream(
+        self,
+        retrieval_result: RetrievalResult,
+        history: list[ConversationTurn] | None = None,
+        model: str | None = None,
+    ) -> Iterator[str]:
+        yield self._answer

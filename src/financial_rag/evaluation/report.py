@@ -53,7 +53,10 @@ def save_csv(summaries: list[EvalSummary], path: str | Path) -> None:
             with open(path, newline="") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    key = (row["model"], row["top_k"], row["score_threshold"], row["question_id"])
+                    key = (
+                        row["model"], row["top_k"], row["score_threshold"],
+                        row.get("think", "False"), row["question_id"],
+                    )
                     existing_keys.add(key)
                     existing_rows.append(row)
         except (csv.Error, KeyError):
@@ -62,12 +65,16 @@ def save_csv(summaries: list[EvalSummary], path: str | Path) -> None:
     new_rows: list[dict] = []
     for s in summaries:
         for r in s.results:
-            key = (r.model, str(r.top_k), str(r.score_threshold), str(r.question_id))
+            key = (
+                r.model, str(r.top_k), str(r.score_threshold),
+                str(r.think), str(r.question_id),
+            )
             if key not in existing_keys:
                 new_rows.append({
                     "model": r.model,
                     "top_k": r.top_k,
                     "score_threshold": r.score_threshold,
+                    "think": r.think,
                     "question_id": r.question_id,
                     "question_type": r.question_type,
                     "faithfulness": r.faithfulness,

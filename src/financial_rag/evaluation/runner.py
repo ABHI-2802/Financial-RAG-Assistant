@@ -104,6 +104,7 @@ class BenchmarkRunner:
                 model=config.model,
                 top_k=config.top_k,
                 score_threshold=config.score_threshold,
+                think=config.think,
                 chunks_used=response.chunks_used,
                 top_score=response.top_score or 0.0,
                 retrieval_ms=response.retrieval_ms,
@@ -129,10 +130,29 @@ class BenchmarkRunner:
     @staticmethod
     def _default_configs() -> list[BenchmarkConfig]:
         return [
-            BenchmarkConfig(model="qwen3:4b",  top_k=3),
             BenchmarkConfig(model="qwen3:4b",  top_k=5),
-            BenchmarkConfig(model="qwen3:8b",  top_k=3),
             BenchmarkConfig(model="qwen3:8b",  top_k=5),
             BenchmarkConfig(model="qwen3:14b", top_k=5),
             BenchmarkConfig(model="mistral:latest", top_k=5),
+        ]
+
+    @staticmethod
+    def think_experiment_configs(
+        models: list[str] | None = None,
+        top_k: int = 5,
+    ) -> list[BenchmarkConfig]:
+        """Paired think=False / think=True configs for the same models.
+
+        Designed to measure whether extended thinking (Qwen3 think mode) improves
+        faithfulness at the cost of latency. Run with BenchmarkRunner(configs=...).
+
+        Args:
+            models: Model tags to compare. Defaults to the two best-scoring models.
+            top_k: Chunk count to use for all configs.
+        """
+        models = models or ["qwen3:8b", "qwen3:14b"]
+        return [
+            BenchmarkConfig(model=m, top_k=top_k, think=think)
+            for m in models
+            for think in (False, True)
         ]

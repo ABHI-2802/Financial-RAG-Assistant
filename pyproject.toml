@@ -36,6 +36,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+claude = [
+    "anthropic>=0.50",
+]
 openai = [
     "openai>=1.30",
 ]

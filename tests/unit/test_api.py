@@ -172,6 +172,9 @@ class _MockGeneratorStream:
     _model = "mock-stream"
     _think = False
 
+    def stream(self, retrieval_result, history=None, model=None):
+        yield "token de prueba"
+
 
 class _MockPipelineStream:
     _retriever = _MockRetrieverStream()

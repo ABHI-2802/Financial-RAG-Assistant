@@ -27,6 +27,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--models", nargs="+", default=None, help="Override model list")
     p.add_argument("--top-k", nargs="+", type=int, default=None, help="Override top-k list")
     p.add_argument("--think", action="store_true", help="Enable think=True on the generator")
+    p.add_argument("--think-experiment", action="store_true",
+                   help="Run think=False vs think=True side-by-side for qwen3:8b and qwen3:14b")
     p.add_argument("--reranker", action="store_true", help="Enable cross-encoder reranking after FAISS retrieval")
     p.add_argument("--hybrid", action="store_true", help="Enable hybrid BM25+FAISS retrieval with RRF")
     p.add_argument("--store", default="data/processed/vector_store", help="FAISS index path")
@@ -37,7 +39,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    if args.quick:
+    if args.think_experiment:
+        configs = BenchmarkRunner.think_experiment_configs()
+    elif args.quick:
         configs = [
             BenchmarkConfig(model="qwen3:4b", top_k=5),
             BenchmarkConfig(model="qwen3:8b", top_k=5),

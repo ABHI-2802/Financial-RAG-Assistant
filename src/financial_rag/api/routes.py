@@ -14,7 +14,7 @@ from financial_rag.api.schemas import (
     ModelsResponse,
 )
 from financial_rag.generation.models import ConversationTurn
-from financial_rag.generation.ollama import AVAILABLE_MODELS, _SYSTEM_PROMPT
+from financial_rag.generation.ollama import AVAILABLE_MODELS
 
 router = APIRouter()
 
@@ -58,7 +58,6 @@ def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
     generator = pipeline._generator
     retriever = pipeline._retriever
 
-    # Retrieve synchronously, then stream generation
     t0 = time.perf_counter()
     retrieval = retriever.retrieve(
         body.question,
@@ -67,66 +66,21 @@ def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
     )
     retrieval_ms = (time.perf_counter() - t0) * 1000
 
+    history = [ConversationTurn(role=m.role, content=m.content) for m in body.history]
+    model_name = body.model or getattr(generator, "_model", "qwen3:8b")
+
     def event_stream() -> Generator[str, None, None]:
-        import ollama
-        import re
-
-        if retrieval.is_empty:
-            no_ctx = "No encontré información relevante en los documentos."
-            yield f"data: {json.dumps({'token': no_ctx})}\n\n"
-            yield f"data: {json.dumps({'done': True, 'answer': no_ctx, 'query': body.question, 'citations': [], 'retrieval_scores': [], 'chunks_used': 0, 'model': getattr(generator, '_model', 'unknown'), 'retrieval_ms': retrieval_ms, 'generation_ms': 0, 'total_ms': retrieval_ms, 'is_grounded': False})}\n\n"
-            return
-
-        # Format context
-        lines = ["Contexto:"]
-        for i, r in enumerate(retrieval.results, start=1):
-            lines.append(f"[{i}] {r.citation}")
-            lines.append(r.chunk.content.strip())
-            lines.append("")
-        context_text = "\n".join(lines)
-
-        model_name = body.model or getattr(generator, "_model", "qwen3:8b")
-        think = getattr(generator, "_think", False)
-
-        t1 = time.perf_counter()
         full_text = ""
-        in_think = False
+        t1 = time.perf_counter()
 
-        messages: list[dict] = [{"role": "system", "content": _SYSTEM_PROMPT}]
-        for turn in body.history:
-            messages.append({"role": turn.role, "content": turn.content})
-        messages.append({"role": "user", "content": f"{context_text}\n\nPregunta: {body.question}"})
-
-        stream = ollama.chat(
-            model=model_name,
-            think=think,
-            messages=messages,
-            stream=True,
-        )
-
-        for chunk in stream:
-            token = chunk.message.content or ""
+        for token in generator.stream(retrieval, history=history or None, model=model_name):
             full_text += token
-
-            # Skip <think> blocks in streamed output
-            if "<think>" in full_text:
-                in_think = True
-            if "</think>" in full_text:
-                in_think = False
-                full_text = re.sub(r"<think>.*?</think>", "", full_text, flags=re.DOTALL)
-                continue
-            if in_think:
-                continue
-
-            if token:
-                yield f"data: {json.dumps({'token': token})}\n\n"
+            yield f"data: {json.dumps({'token': token})}\n\n"
 
         generation_ms = (time.perf_counter() - t1) * 1000
-        clean_answer = re.sub(r"<think>.*?</think>", "", full_text, flags=re.DOTALL).strip()
-
         done_payload = {
             "done": True,
-            "answer": clean_answer,
+            "answer": full_text.strip(),
             "query": body.question,
             "citations": retrieval.citations,
             "retrieval_scores": [r.score for r in retrieval.results],
