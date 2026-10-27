@@ -123,7 +123,7 @@ Empirically determined via `scripts/chunk_experiment.py`: the 800/100 config red
 ## Quick Start — Docker (recommended)
 
 ```bash
-git clone https://github.com/josefrodrim/Financial-RAG-Assistant
+git clone https://github.com/ABHI-2802/Financial-RAG-Assistant
 cd Financial-RAG-Assistant
 
 # Start everything (API + Frontend + Ollama)
@@ -457,7 +457,7 @@ Determinado empíricamente con `scripts/chunk_experiment.py`: la configuración 
 ## Inicio rápido — Docker (recomendado)
 
 ```bash
-git clone https://github.com/josefrodrim/Financial-RAG-Assistant
+git clone https://github.com/ABHI-2802/Financial-RAG-Assistant
 cd Financial-RAG-Assistant
 
 # Iniciar todo (API + Frontend + Ollama)
